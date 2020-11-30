@@ -1,0 +1,17 @@
+﻿  main.cpp
+  cl_version.h: CL_TARGET_OPENCL_VERSION is not defined. Defaulting to 220 (OpenCL 2.2)
+C:\Users\Lily\Documents\UNI\BA\project\Project\Header\Write.h(22,19): warning C4018: '<': signed/unsigned mismatch
+C:\Users\Lily\Documents\UNI\BA\project\Project\Header\Write.h(53,24): warning C4018: '<': signed/unsigned mismatch
+C:\Users\Lily\Documents\UNI\BA\project\Project\Header\Write.h(53,13): warning C4101: 'index': unreferenced local variable
+C:\Users\Lily\Documents\UNI\BA\project\Project\Header\vec4.h(129,30): error C2556: 'vec4 random_in_unit_sphere(void)': overloaded function differs only by return type from 'vec3 random_in_unit_sphere(void)'
+C:\Users\Lily\Documents\UNI\BA\project\Project\Header\vec3.h(112): message : see declaration of 'random_in_unit_sphere'
+C:\Users\Lily\Documents\UNI\BA\project\Project\Header\vec4.h(129,6): error C2371: 'random_in_unit_sphere': redefinition; different basic types
+C:\Users\Lily\Documents\UNI\BA\project\Project\Header\vec3.h(112): message : see declaration of 'random_in_unit_sphere'
+C:\Users\Lily\Documents\UNI\BA\project\Project\Header\vec4.h(138,27): error C2556: 'vec4 random_unit_vector(void)': overloaded function differs only by return type from 'vec3 random_unit_vector(void)'
+C:\Users\Lily\Documents\UNI\BA\project\Project\Header\vec3.h(120): message : see declaration of 'random_unit_vector'
+C:\Users\Lily\Documents\UNI\BA\project\Project\Header\vec4.h(138,6): error C2371: 'random_unit_vector': redefinition; different basic types
+C:\Users\Lily\Documents\UNI\BA\project\Project\Header\vec3.h(120): message : see declaration of 'random_unit_vector'
+C:\Users\Lily\Documents\UNI\BA\project\Project\Header\vec4.h(146,27): error C2065: 'random_in_unit_sphere': undeclared identifier
+C:\Users\Lily\Documents\UNI\BA\project\Project\Header\vec4.h(146,50): error C2440: 'initializing': cannot convert from 'vec3 (__cdecl *)(void)' to 'vec4'
+C:\Users\Lily\Documents\UNI\BA\project\Project\Header\vec4.h(146,50): message : No constructor could take the source type, or constructor overload resolution was ambiguous
+C:\Users\Lily\Documents\UNI\BA\project\Project\Header\Renderer.h(68,10): fatal error C1083: Cannot open include file: 'Tetrahedron.h': No such file or directory
