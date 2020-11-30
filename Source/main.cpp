@@ -1,12 +1,9 @@
-#include "Renderer.h"
-#include "Hittable.h"
-#include "Hittable_List.h"
-#include "Sphere.h"
-#include "Camera.h"
-
+#include "../Header/Renderer.h"
+#include "../Header/Camera.h"
 
 #include <iostream>
-
+#include <CL/cl.h>
+#include <CL/opencl.h>
 
 vector<Color> simple_gradient(const int width, const int height){
 
@@ -134,12 +131,6 @@ Hittable_List spheres(){
     
     //set up scene
     Hittable_List scene;
-
-    //auto material_1 = make_shared<Lambertian>(Color(1.0, 1.0, 0));
-    //auto material_2 = make_shared<Lambertian>(Color(0.25, 1.0, 0.1));
-
-    ///scene.add(make_shared<Sphere>(Point3(0,0,-1), 0.5, material_1));
-    //scene.add(make_shared<Sphere>(Point3(0,-100.5,-1), 100, material_2));
 
     auto material_ground = make_shared<Lambertian>(Color(0.8, 0.8, 0.0));
     auto material_center = make_shared<Lambertian>(Color(0.7, 0.3, 0.3));

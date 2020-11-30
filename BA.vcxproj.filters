@@ -62,25 +62,25 @@
     <ClInclude Include="header\vec3.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="header\vec4.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="header\Write.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Ray4.h">
+    <ClInclude Include="Header\Tetrahedron.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Camera4.h">
+    <ClInclude Include="Header\Camera4.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Tetrahedron.h">
+    <ClInclude Include="Header\Hittable4.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Hittable4.h">
+    <ClInclude Include="Header\Ray4.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Mesh.h">
+    <ClInclude Include="Header\vec4.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Header\Mesh.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

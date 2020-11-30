@@ -100,14 +100,20 @@
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="source\main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Camera4.h" />
-    <ClInclude Include="Hittable4.h" />
-    <ClInclude Include="Mesh.h" />
-    <ClInclude Include="Ray4.h" />
+    <ClInclude Include="Header\Camera4.h" />
+    <ClInclude Include="Header\Hittable4.h" />
+    <ClInclude Include="Header\Mesh.h" />
+    <ClInclude Include="Header\Ray4.h" />
+    <ClInclude Include="Header\Tetrahedron.h" />
     <ClInclude Include="header\BoundingBox.h" />
     <ClInclude Include="header\Box.h" />
     <ClInclude Include="header\BVH.h" />
@@ -122,9 +128,8 @@
     <ClInclude Include="header\stb_image_write.h" />
     <ClInclude Include="header\Triangle.h" />
     <ClInclude Include="header\vec3.h" />
-    <ClInclude Include="header\vec4.h" />
+    <ClInclude Include="Header\vec4.h" />
     <ClInclude Include="header\Write.h" />
-    <ClInclude Include="Tetrahedron.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

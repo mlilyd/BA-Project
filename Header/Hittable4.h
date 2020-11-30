@@ -1,6 +1,6 @@
 #pragma once
-#ifndef HITTABLE_H
-#define HITTABLE_H
+#ifndef HITTABLE4_H
+#define HITTABLE4_H
 
 #include "Renderer.h"
 #include "BoundingBox.h"
@@ -8,7 +8,7 @@
 
 class Material;
 
-struct hit_record {
+struct hit_record4 {
     Point4 p;
     vec4 normal;
     shared_ptr<Material> material_ptr;

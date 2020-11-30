@@ -1,5 +1,5 @@
-#ifndef CAMERA_H
-#define CAMERA_H
+#ifndef CAMERA4_H
+#define CAMERA4_H
 
 #include "Ray4.h"
 #include "Renderer.h"
@@ -13,8 +13,8 @@ public:
         auto viewport_width = aspect_ratio * viewport_height;
 
         auto w = unit_vector(lookfrom - lookat);
-        auto u = unit_vector(cross(vup, w));
-        auto v = cross(w, u);
+        auto u = unit_vector(cross(vup, w, vov));
+        auto v = cross(w, u, vov);
 
 
         origin = lookfrom;

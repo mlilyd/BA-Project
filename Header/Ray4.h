@@ -1,5 +1,5 @@
-#ifndef RAY_H
-#define RAY_H
+#ifndef RAY4_H
+#define RAY4_H
 
 #include "vec4.h"
 
@@ -17,7 +17,7 @@ public:
     Point4 origin() const { return orig; }
     vec4 direction() const { return dir; }
 
-    //need a 2nd parameter...
+    //need a 2nd parameter...?
     Point4 at(double t) const {
         return orig + t * dir;
     }

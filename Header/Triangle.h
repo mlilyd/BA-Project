@@ -7,7 +7,10 @@
 class Triangle : public Hittable {
     public: 
         Triangle() {}
-        Triangle(Point3 a, Point3 b, Point3 c, shared_ptr<Material> m): A(a), B(b), C(c), mat_ptr(m){};
+        Triangle(Point3 a, Point3 b, Point3 c, shared_ptr<Material> m): A(a), B(b), C(c), mat_ptr(m){
+            vec3 temp = cross((B - A), (C - A));
+            normal = temp/temp.length();
+        };
 
         virtual bool hit(
             const Ray& r, double tmin, double tmax, hit_record& rec) const override;
@@ -18,11 +21,16 @@ class Triangle : public Hittable {
         Point3 B;
         Point3 C;
         shared_ptr<Material> mat_ptr;
+        vec3 normal;
 };
 
 bool Triangle::hit(const Ray& r, double tmin, double tmax, hit_record& rec) const{
     //calculate using barycentric coordinates and Cramer's rule for solving linear system
-    vec3 P = rec.p;
+
+    double temp = dot(normal, A);
+    double t = -(dot(normal, r.origin()) + temp) / (dot(normal, r.direction()));
+
+    vec3 P = r.at(t);
     vec3 v0 = C-A;
     vec3 v1 = B-A;
     vec3 v2 = P-A;
