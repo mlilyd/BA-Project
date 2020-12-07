@@ -139,6 +139,9 @@
     <ClInclude Include="Header\vec4.h" />
     <ClInclude Include="header\Write.h" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Source\add_numbers.cl" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
