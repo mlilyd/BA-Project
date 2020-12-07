@@ -5,6 +5,7 @@
 #include "Renderer.h"
 #include "BoundingBox.h"
 #include "Ray4.h"
+#include "vec4.h"
 
 class Material;
 
@@ -28,7 +29,7 @@ public:
     virtual bool hit(const Ray4& r,
         double t_min,
         double t_max,
-        hit_record& rec) const = 0;
+        hit_record4& rec) const = 0;
 
 };
 
