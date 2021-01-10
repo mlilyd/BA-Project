@@ -6,15 +6,21 @@
 
 #include <iostream>
 #include <fstream>
+#include <stdio.h>
 #include <vector>
 #include <CL/opencl.hpp>
 #include <CL/cl.h>
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "../Header/stb_image_write.h"
 
 // CONSTANT DEFINITIONS
 const int img_width = 1280;
 const int img_height = 720;
 
-cl_float4* cpu_output; //cl_float4 is not part of cl namespace
+cl_float3 cpu_output[img_width * img_height]{};
+uint8_t output256[img_width * img_height * 3]{};
+
 cl::CommandQueue queue;
 cl::Kernel kernel;
 cl::Context context;
@@ -73,7 +79,7 @@ void initOpenCL() {
     if (result) std::cout << "Error during compilation OpenCL code!!!\n (" << result << ")" << std::endl;
     if (result == CL_BUILD_PROGRAM_FAILURE) std::cout << "CL Build Program Failure?" << std::endl;
 
-    kernel = cl::Kernel(program, "add");
+    kernel = cl::Kernel(program, "render_gradient");
 
 
 }
@@ -83,18 +89,40 @@ float clamp(float x) { return x < 0.0f ? 0.0f : x > 1.0f ? 1.0f : x; }
 //convert RGB float in range [0, 1] to int in range [0, 255]
 int toInt(float x) { return int(clamp(x) * 255 + .5); }
 
-void writeImage() {
-    // write to PPM file, based on openCL example
-    FILE* f = fopen("../Renders/test.ppm", "w");
-    fprintf(f, "P3\n%d %d\n%d\n", img_width, img_height, 255);
+//Using fprint for a more efficient write operation
+void saveImage(std::string filename, bool ppm = true, bool png = true) {
+    std::cout << "Saving image ...\n";
+    FILE* file;
+    
+    if (ppm) {
+        file = fopen((filename + ".ppm").c_str(), "w");
+        fprintf(file, "P3\n%d %d\n%d\n", img_width, img_height, 255);
+    }
 
-    //loop over pixels, and write RGB values
-    for (int i = 0; i < img_width * img_height; i++) {
-        fprintf(f, "%d %d %d ",
-            toInt(cpu_output[i].s[0]),
-            toInt(cpu_output[i].s[1]),
-            toInt(cpu_output[i].s[2])
-        );
+    for (std::pair<int, int> i(0,0); i.first < img_width * img_height; i.first++) {
+
+        int r = toInt(cpu_output[i.first].s[0]);
+        int g = toInt(cpu_output[i.first].s[1]);
+        int b = toInt(cpu_output[i.first].s[2]);
+
+        if (ppm) {
+            fprintf(file, "%d %d %d ", r, g, b);
+        }
+
+        if (png) {
+            output256[i.second++] = r;
+            output256[i.second++] = g;
+            output256[i.second++] = b;
+        }
+    }
+    if (ppm) {
+        fclose(file);
+        std::cout << "Finished writing PPM!\n";
+    }
+    if (png) {
+        stbi_write_png((filename + ".png").c_str(), img_width, img_height, 3, output256, img_width*3);
+        std::cout << "Finished writing png!\n";
+
     }
 
 }
@@ -104,34 +132,34 @@ void cleanUp() {
 }
 
 int main() {
+     //setup opencl
     initOpenCL();
 
-    // create buffers on the device
-    cl::Buffer buffer_A(context, CL_MEM_READ_WRITE, sizeof(int) * 10);
-    cl::Buffer buffer_B(context, CL_MEM_READ_WRITE, sizeof(int) * 10);
-    cl::Buffer buffer_C(context, CL_MEM_READ_WRITE, sizeof(int) * 10);
+    // create buffer on device
+    cl_output = cl::Buffer(context, CL_MEM_WRITE_ONLY, img_width * img_height * sizeof(cl_float3));
 
-    // init arrays
-    int A[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-    int B[] = { 0, 1, 2, 0, 1, 2, 0, 1, 2, 0 };
-    //RES   = { 0, 2, 4, 3, 5, 7, 6, 8, 10, 9 };
+    //specify kernel arguments
+    kernel.setArg(0, cl_output);
+    kernel.setArg(1, img_width);
+    kernel.setArg(2, img_height);
+    
+    //specify work items. 
+    //each pixel has its own work item, so number of work items equals number of pixels
+    std::size_t global_work_size = img_width * img_height;
+    std::size_t local_work_size = 64;
 
-    // write arrays to buffer
-    queue.enqueueWriteBuffer(buffer_A, CL_TRUE, 0, sizeof(int) * 10, A);
-    queue.enqueueWriteBuffer(buffer_B, CL_TRUE, 0, sizeof(int) * 10, B);
-
-    // Run Kernel
-    kernel.setArg(0, buffer_A);
-    kernel.setArg(1, buffer_B);
-    kernel.setArg(2, buffer_C);
-
-    queue.enqueueNDRangeKernel(kernel, cl::NullRange, cl::NDRange(10), cl::NullRange);
+    //launch kernel
+    queue.enqueueNDRangeKernel(kernel, NULL, global_work_size, local_work_size);
     queue.finish();
 
-    // init resulting array c
-    int C[10]{};
-    //read result C from the device to array C
-    queue.enqueueReadBuffer(buffer_C, CL_TRUE, 0, sizeof(int) * 10, C);
+    //read opencl output to CPU 
+    queue.enqueueReadBuffer(cl_output, CL_TRUE, 0, img_width * img_height * sizeof(cl_float3), cpu_output);
+
+    //save image to PPM format
+    std::string filename = "Renders/gradient_0";
+    
+    saveImage(filename, false);
+   
 
     return 0;
 }

@@ -62,9 +62,6 @@
     <ClInclude Include="header\vec3.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="header\Write.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Header\Tetrahedron.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -86,9 +83,15 @@
     <ClInclude Include="Header\Mesh4.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Header\Write.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="Source\add_numbers.cl">
+    <None Include="Header\raytrace_kernel.cl">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="Source\kernel.cl">
       <Filter>Source Files</Filter>
     </None>
   </ItemGroup>

@@ -63,10 +63,15 @@ inline int random_int(int min, int max){
 #include "Rectangle.h"
 #include "Box.h"
 #include "Triangle.h"
-/*
+
+
+
 #include "vec4.h"
 #include "Tetrahedron.h"
 #include "Ray4.h"
 #include "Camera4.h"
-*/
+
+
+
+
 #endif

@@ -106,6 +106,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <AdditionalIncludeDirectories>C:\dev\OpenCL-Headers;C:\Program Files (x86)\IntelSWTools\system_studio_2020\OpenCL\sdk\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalUsingDirectories>%(AdditionalUsingDirectories)</AdditionalUsingDirectories>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>C:\Program Files %28x86%29\IntelSWTools\system_studio_2020\OpenCL\sdk\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -137,10 +138,11 @@
     <ClInclude Include="header\Triangle.h" />
     <ClInclude Include="header\vec3.h" />
     <ClInclude Include="Header\vec4.h" />
-    <ClInclude Include="header\Write.h" />
+    <ClInclude Include="Header\Write.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Source\add_numbers.cl" />
+    <None Include="Header\raytrace_kernel.cl" />
+    <None Include="Source\kernel.cl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
