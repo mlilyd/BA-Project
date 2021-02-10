@@ -26,6 +26,18 @@ cl::Kernel kernel;
 cl::Context context;
 cl::Program program;
 cl::Buffer cl_output;
+cl::Buffer cl_spheres;
+
+//dummy variables required for memory allignment
+struct Sphere {
+    cl_float radius;
+    cl_float dummy1;
+    cl_float dummy2;
+    cl_float dummy3;
+    cl_float3 position;
+    cl_float3 color;
+    cl_float3 emission;
+};
 
 
 void initOpenCL() {
@@ -79,11 +91,10 @@ void initOpenCL() {
     if (result) std::cout << "Error during compilation OpenCL code!!!\n (" << result << ")" << std::endl;
     if (result == CL_BUILD_PROGRAM_FAILURE) std::cout << "CL Build Program Failure?" << std::endl;
 
-    kernel = cl::Kernel(program, "render_gradient");
+    kernel = cl::Kernel(program, "render_triangle");
 
 
 }
-
 
 float clamp(float x) { return x < 0.0f ? 0.0f : x > 1.0f ? 1.0f : x; }
 //convert RGB float in range [0, 1] to int in range [0, 255]
@@ -131,17 +142,90 @@ void cleanUp() {
     delete cpu_output;
 }
 
+#define float3(x, y, z) {{x, y, z}} 
+
+void initScene(Sphere* cpu_spheres) {
+    
+    // left wall
+    cpu_spheres[0].radius = 200.0f;
+    cpu_spheres[0].position = float3(-200.6f, 0.0f, 0.0f);
+    cpu_spheres[0].color = float3(0.75f, 0.25f, 0.25f);
+    cpu_spheres[0].emission = float3(0.0f, 0.0f, 0.0f);
+
+    // right wall
+    cpu_spheres[1].radius = 200.0f;
+    cpu_spheres[1].position = float3(200.6f, 0.0f, 0.0f);
+    cpu_spheres[1].color = float3(0.25f, 0.25f, 0.75f);
+    cpu_spheres[1].emission = float3(0.0f, 0.0f, 0.0f);
+    
+
+    // floor
+    cpu_spheres[2].radius = 200.0f;
+    cpu_spheres[2].position = float3(0.0f, -200.4f, 0.0f);
+    cpu_spheres[2].color = float3(0.9f, 0.8f, 0.7f);
+    cpu_spheres[2].emission = float3(0.0f, 0.0f, 0.0f);
+
+    
+    // ceiling
+    cpu_spheres[3].radius = 200.0f;
+    cpu_spheres[3].position = float3(0.0f, 200.4f, 0.0f);
+    cpu_spheres[3].color = float3(0.9f, 0.8f, 0.7f);
+    cpu_spheres[3].emission = float3(0.0f, 0.0f, 0.0f);
+
+    // back wall
+    cpu_spheres[4].radius = 200.0f;
+    cpu_spheres[4].position = float3(0.0f, 0.0f, -200.4f);
+    cpu_spheres[4].color = float3(0.9f, 0.8f, 0.7f);
+    cpu_spheres[4].emission = float3(0.0f, 0.0f, 0.0f);
+
+ 
+    // front wall 
+    cpu_spheres[5].radius = 200.0f;
+    cpu_spheres[5].position = float3(0.0f, 0.0f, 202.0f);
+    cpu_spheres[5].color = float3(0.9f, 0.8f, 0.7f);
+    cpu_spheres[5].emission = float3(0.0f, 0.0f, 0.0f);
+    
+
+    // left sphere
+    cpu_spheres[0].radius = 0.4f;
+    cpu_spheres[0].position = float3(0.0f, 0.0f, 0.0f);
+    cpu_spheres[0].color = float3(0.9f, 0.8f, 0.7f);
+    cpu_spheres[0].emission = float3(0.2f, 0.2f, 0.2f);
+
+    // right sphere
+    cpu_spheres[1].radius = 0.16f;
+    cpu_spheres[1].position = float3(0.25f, -0.24f, 0.1f);
+    cpu_spheres[1].color = float3(0.9f, 0.8f, 0.7f);
+    cpu_spheres[1].emission = float3(0.0f, 0.0f, 0.0f);
+   
+    // lightsource
+    cpu_spheres[2].radius = 1.0f;
+    cpu_spheres[2].position = float3(0.0f, 1.36f, 0.0f);
+    cpu_spheres[2].color = float3(0.0f, 0.0f, 0.0f);
+    cpu_spheres[2].emission = float3(9.0f, 8.0f, 6.0f);
+    
+
+}
+
 int main() {
      //setup opencl
     initOpenCL();
 
-    // create buffer on device
-    cl_output = cl::Buffer(context, CL_MEM_WRITE_ONLY, img_width * img_height * sizeof(cl_float3));
+    // initialize scene
+    Sphere cpu_spheres[9];
+    initScene(cpu_spheres);
 
+    // create buffer on device for image output and scene
+    cl_output = cl::Buffer(context, CL_MEM_WRITE_ONLY, img_width * img_height * sizeof(cl_float3));
+    cl_spheres = cl::Buffer(context, CL_MEM_READ_ONLY, 9 * sizeof(Sphere));
+
+    std::cout << "Rendering image...\n";
     //specify kernel arguments
     kernel.setArg(0, cl_output);
     kernel.setArg(1, img_width);
     kernel.setArg(2, img_height);
+    //kernel.setArg(3, 3);
+    //kernel.setArg(4, cl_spheres);
     
     //specify work items. 
     //each pixel has its own work item, so number of work items equals number of pixels
@@ -151,15 +235,16 @@ int main() {
     //launch kernel
     queue.enqueueNDRangeKernel(kernel, NULL, global_work_size, local_work_size);
     queue.finish();
-
+    
+    std::cout << "Rendering done!\n";
+        
     //read opencl output to CPU 
     queue.enqueueReadBuffer(cl_output, CL_TRUE, 0, img_width * img_height * sizeof(cl_float3), cpu_output);
 
     //save image to PPM format
-    std::string filename = "Renders/gradient_0";
+    std::string filename = "Renders/triangle";
     
     saveImage(filename, false);
    
-
     return 0;
 }
