@@ -8,6 +8,11 @@ struct Ray{
     float3 dir;
 };
 
+struct Ray4{
+    float4 origin;
+    float4 dir;
+};
+
 struct Sphere{
     float radius;
     float3 position;
@@ -22,12 +27,32 @@ struct Triangle{
     float3 color;
 };
 
+struct TriangleMesh{
+    float3 vertices;
+    float3 face;
+    float3 faceIndex;
+    float3 vertIndex;
+    float3 normal;
+    
+
+};
+
 struct Tetrahedron{
     float4 v0;
     float4 v1;
     float4 v2;
     float4 v3;
     float3 color;
+    float AOcoeff;
+};
+
+struct TetraMesh{
+    float4 vertices;
+    float4 face;
+    float4 faceIndex;
+    float4 vertIndex;
+    float4 normal;
+
 };
 
 
@@ -55,12 +80,25 @@ float det4(float4 A, float4 B, float4 C, float4 D){
     return res;
 }
 
-bool intersect_tetrahedron(const struct Tetrahedron* tetrahedron, const struct Ray* ray, flot* t){
-    
+bool intersect_tetrahedron(const struct Tetrahedron* tetra, const struct Ray4* ray, float* t){
+   
+    float4 p = ray->origin + (ray->dir * (*t));
 
+    float detABCD = det4(tetra->v0, tetra->v1, tetra->v2, tetra->v3);
+
+    float detPBCD = det4(p, tetra->v1, tetra->v2, tetra->v3);
+    float detAPCD = det4(tetra->v0, p, tetra->v2, tetra->v3);
+    float detABPD = det4(tetra->v0, tetra->v1, p, tetra->v3);
+    float detABCP = det4(tetra->v0, tetra->v1, tetra->v2, p);
+
+    float x1 = detPBCD/detABCD;
+    float x2 = detAPCD/detABCD;
+    float x3 = detABPD/detABCD;
+    float x4 = detABCP/detABCD;
+  
+    if ((x1 < 0) || (x2 < 0) || (x3 < 0) || (x4 < 0)) {return false;}
+    else {return true;}
 }
-
-
 
 struct Ray createCamRay(const int x_coord, const int y_coord, const int width, const int height) {
     float fx = (float)x_coord / (float)width;
@@ -74,6 +112,23 @@ struct Ray createCamRay(const int x_coord, const int y_coord, const int width, c
 
     struct Ray ray;
     ray.origin = (float3)(0.0f, 0.0f, 100.0f);
+    ray.dir = normalize(pixel_pos - ray.origin);
+
+    return ray;
+}
+
+struct Ray4 createCamRay4D(const int x_coord, const int y_coord, const int width, const int height) {
+    float fx = (float)x_coord / (float)width;
+    float fy = (float)y_coord / (float)height;
+
+    float aspect_ratio = (float)width / (float)height;
+    float fx2 = (fx - 0.5f) * aspect_ratio;
+    float fy2 = fy - 0.5f;
+
+    float4 pixel_pos = (float4)(fx2, -fy2, 0.0f, 0.0f);
+
+    struct Ray4 ray;
+    ray.origin = (float4)(0.0f, 0.0f, 100.0f, 0.0f);
     ray.dir = normalize(pixel_pos - ray.origin);
 
     return ray;
@@ -121,6 +176,10 @@ bool intersect_triangle(const struct Triangle* triangle, const struct Ray* ray, 
         return true;
 }
 
+bool intersect(const struct Ray* ray, float *tnear, float3 *triangleMesh ){
+    return true;
+}
+
 __kernel void render_gradient(__global float3* cl_output, int img_width, int img_height){
     const int id = get_global_id(0);
     int x = id % img_width;
@@ -165,12 +224,12 @@ __kernel void render_triangle(__global float3* cl_output, int img_width, int img
     float fx = (float)x / (float)(img_width-1);
     float fy = (float)y / (float)(img_height-1);
 
-    struct Ray camray = createCamRay(x, y, img_width, img_height);
+    struct Ray camray = createCamRay(x+250, y+100, img_width, img_height);
 
     struct Triangle triangle;
-    triangle.v0 = (float3)(0.0f, 0.0f, 0.0f);
-    triangle.v1 = (float3)(0.25f, 0.0f, 0.0f);
-    triangle.v2 = (float3)(0.0f, 0.25f, 0.0f);
+    triangle.v0 = (float3)(0.25f, 0.0f, 0.0f);
+    triangle.v1 = (float3)(0.0f, 0.25f, 0.0f);
+    triangle.v2 = (float3)(0.0f, 0.0f, 0.0f);
     triangle.color = (float3)(0.75f, 0.3f, 0.2f);
 
     float t = 1e20;
@@ -183,4 +242,31 @@ __kernel void render_triangle(__global float3* cl_output, int img_width, int img
 
     cl_output[id] = triangle.color;
 }
+__kernel void render_tetrahedron(__global float3* cl_output, int img_width, int img_height){
+    const int id = get_global_id(0);
+    int x = id % img_width;
+    int y = id / img_width;
 
+    float fx = (float)x / (float)(img_width-1);
+    float fy = (float)y / (float)(img_height-1);
+
+    struct Ray4 testray = createCamRay4D(x, y, img_width, img_height);
+
+    struct Tetrahedron tetra;
+    tetra.v0 = (float4)(0.25f, 0.0f, 0.0f, 0.0f);
+    tetra.v1 = (float4)(0.0f, 0.0f, 0.0f, 0.0f);
+    tetra.v2 = (float4)(0.0f, 0.25f, 0.0f, 0.0f);
+    tetra.v3 = (float4)(0.0f, 0.0f, 0.25f, 0.0f);
+    tetra.color = (float3)(0.75f, 0.3f, 0.2f);
+    tetra.AOcoeff = 0.0f;
+
+    float t = 1e20;
+   
+
+    if (t > 1e19){
+        cl_output[id] = (float3)(1.0f, 1.0f, 1.0f);
+        return;
+    }
+
+    cl_output[id] = tetra.color;
+}

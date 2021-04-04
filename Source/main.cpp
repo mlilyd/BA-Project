@@ -218,13 +218,15 @@ int main() {
     // create buffer on device for image output and scene
     cl_output = cl::Buffer(context, CL_MEM_WRITE_ONLY, img_width * img_height * sizeof(cl_float3));
     cl_spheres = cl::Buffer(context, CL_MEM_READ_ONLY, 9 * sizeof(Sphere));
+    
+    cl::Buffer cl_test_array = cl::Buffer(context, CL_MEM_READ_ONLY, 3 * sizeof(cl_float3));
 
     std::cout << "Rendering image...\n";
     //specify kernel arguments
     kernel.setArg(0, cl_output);
     kernel.setArg(1, img_width);
     kernel.setArg(2, img_height);
-    //kernel.setArg(3, 3);
+    //kernel.setArg(3, cl_test_array);
     //kernel.setArg(4, cl_spheres);
     
     //specify work items. 
@@ -242,7 +244,7 @@ int main() {
     queue.enqueueReadBuffer(cl_output, CL_TRUE, 0, img_width * img_height * sizeof(cl_float3), cpu_output);
 
     //save image to PPM format
-    std::string filename = "Renders/triangle";
+    std::string filename = "Renders/new";
     
     saveImage(filename, false);
    
