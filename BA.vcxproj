@@ -143,6 +143,8 @@
   <ItemGroup>
     <None Include="Header\raytrace_kernel.cl" />
     <None Include="Source\kernel.cl" />
+    <None Include="Source\example.cl" />
+    <None Include="Source\ambientocclusion.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

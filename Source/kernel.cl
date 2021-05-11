@@ -13,13 +13,6 @@ struct Ray4{
     float4 dir;
 };
 
-struct Sphere{
-    float radius;
-    float3 position;
-    float3 color;
-    float3 emit;
-};
-
 struct Triangle{
     float3 v0;
     float3 v1;
@@ -28,13 +21,11 @@ struct Triangle{
 };
 
 struct TriangleMesh{
-    float3 vertices;
+    float3* vertices;
     float3 face;
     float3 faceIndex;
     float3 vertIndex;
     float3 normal;
-    
-
 };
 
 struct Tetrahedron{
@@ -42,16 +33,15 @@ struct Tetrahedron{
     float4 v1;
     float4 v2;
     float4 v3;
-    float3 color;
-    float AOcoeff;
 };
 
 struct TetraMesh{
-    float4 vertices;
-    float4 face;
-    float4 faceIndex;
-    float4 vertIndex;
-    float4 normal;
+    float4* vertices;
+    float4* ao_values;
+    int vol;
+    int* volIndex;
+    int* vertIndex;
+    float4* normal;
 
 };
 
@@ -111,45 +101,31 @@ struct Ray createCamRay(const int x_coord, const int y_coord, const int width, c
     float3 pixel_pos = (float3)(fx2, -fy2, 0.0f);
 
     struct Ray ray;
-    ray.origin = (float3)(0.0f, 0.0f, 100.0f);
+    ray.origin = (float3)(0.0f, 0.0f, 1.0f);
     ray.dir = normalize(pixel_pos - ray.origin);
 
     return ray;
 }
 
-struct Ray4 createCamRay4D(const int x_coord, const int y_coord, const int width, const int height) {
+struct Ray4 createCamRay4D(const int x_coord, const int y_coord, const int z_coord, const int width, const int height, const int depth) {
     float fx = (float)x_coord / (float)width;
     float fy = (float)y_coord / (float)height;
+    float fz = (float)z_coord;
 
     float aspect_ratio = (float)width / (float)height;
     float fx2 = (fx - 0.5f) * aspect_ratio;
     float fy2 = fy - 0.5f;
 
-    float4 pixel_pos = (float4)(fx2, -fy2, 0.0f, 0.0f);
+    float4 pixel_pos = (float4)(fx2, -fy2, fz, 0.0f);
 
     struct Ray4 ray;
-    ray.origin = (float4)(0.0f, 0.0f, 100.0f, 0.0f);
+    ray.origin = (float4)(0.0f, 0.0f, 0.0f, 0.0f);
     ray.dir = normalize(pixel_pos - ray.origin);
 
     return ray;
 }
 
-bool intersect_sphere(const struct Sphere* sphere, const struct Ray* ray, float* t){
-    float3 rayToCenter = sphere->position - ray->origin;
-    
-    float b = dot(rayToCenter, ray->dir);
-    float c = dot(rayToCenter, rayToCenter) - sphere->radius*sphere->radius;
-    float disc = b*b-c;
 
-    if (disc < 0.0f) {return false;}
-    else {*t = b - sqrt(disc);}
-
-    if (*t < 0.0f){
-        *t = b + sqrt(disc);
-        if (*t < 0.0f) {return false;}
-    }
-    else {return true;}
-}
 
 bool intersect_triangle(const struct Triangle* triangle, const struct Ray* ray, float *t){
         float3 v0v1 = triangle->v1 - triangle->v0;
@@ -176,97 +152,40 @@ bool intersect_triangle(const struct Triangle* triangle, const struct Ray* ray, 
         return true;
 }
 
-bool intersect(const struct Ray* ray, float *tnear, float3 *triangleMesh ){
-    return true;
+bool intersect4d(const struct Ray4* ray, float *tnear, float3 *tetraMesh ){
+    for (int i=0; i<sizeof(tetraMesh)/sizeof(float3); i++){
+       struct Tetrahedron tetra;
+
+    }
 }
 
-__kernel void render_gradient(__global float3* cl_output, int img_width, int img_height){
-    const int id = get_global_id(0);
-    int x = id % img_width;
-    int y = id / img_width; 
-    float fx = (float)x / (float)(img_width-1);
-    float fy = (float)y / (float)(img_height-1);
-    cl_output[id] = (float3) (fy, fx, 0.5);
-}
-
-__kernel void render_sphere(__global float3* cl_output, int img_width, int img_height){
+__kernel void render_triangle(__global float3* cl_output,  int img_width, int img_height, struct Triangle tri){
     const int id = get_global_id(0);
     int x = id % img_width;
     int y = id / img_width;
-
-    float fx = (float)x / (float)(img_width-1);
-    float fy = (float)y / (float)(img_height-1);
 
     struct Ray camray = createCamRay(x, y, img_width, img_height);
 
-    struct Sphere sphere;
-    sphere.radius = 0.4f;
-    sphere.position = (float3)(0.0f, 0.0f, 3.0f);
-    sphere.color = (float3)(0.9f, 0.3f, 0.0f);
-
     float t = 1e20;
-    intersect_sphere(&sphere, &camray, &t);
+    intersect_triangle(&tri, &camray, &t);
 
     if (t > 1e19){
-        cl_output[id] = (float3)((fy-0.8)*0.5f, (fy+0.6)*0.9f, 0.95f);
+        cl_output[id] = (float3)(0.0f, 0.0f, 0.0f);
         return;
     }
-	
-	cl_output[id] = sphere.color;
+
+    cl_output[id] = tri.color;
 }
 
-
-__kernel void render_triangle(__global float3* cl_output, int img_width, int img_height){
+__kernel void render_4d_to_3d(__global float3* cl_output, int width, int height, int depth){
     const int id = get_global_id(0);
-    int x = id % img_width;
-    int y = id / img_width;
+    int x = id % width;
+    int z = id / (width*height);
+    int y = (id - z*width*height )/ width;
+    
 
-    float fx = (float)x / (float)(img_width-1);
-    float fy = (float)y / (float)(img_height-1);
+    struct Ray4 camray = createCamRay4D(x, y, z, width, height, depth);
 
-    struct Ray camray = createCamRay(x+250, y+100, img_width, img_height);
 
-    struct Triangle triangle;
-    triangle.v0 = (float3)(0.25f, 0.0f, 0.0f);
-    triangle.v1 = (float3)(0.0f, 0.25f, 0.0f);
-    triangle.v2 = (float3)(0.0f, 0.0f, 0.0f);
-    triangle.color = (float3)(0.75f, 0.3f, 0.2f);
-
-    float t = 1e20;
-    intersect_triangle(&triangle, &camray, &t);
-
-    if (t > 1e19){
-        cl_output[id] = (float3)(1.0f, 1.0f, 1.0f);
-        return;
-    }
-
-    cl_output[id] = triangle.color;
-}
-__kernel void render_tetrahedron(__global float3* cl_output, int img_width, int img_height){
-    const int id = get_global_id(0);
-    int x = id % img_width;
-    int y = id / img_width;
-
-    float fx = (float)x / (float)(img_width-1);
-    float fy = (float)y / (float)(img_height-1);
-
-    struct Ray4 testray = createCamRay4D(x, y, img_width, img_height);
-
-    struct Tetrahedron tetra;
-    tetra.v0 = (float4)(0.25f, 0.0f, 0.0f, 0.0f);
-    tetra.v1 = (float4)(0.0f, 0.0f, 0.0f, 0.0f);
-    tetra.v2 = (float4)(0.0f, 0.25f, 0.0f, 0.0f);
-    tetra.v3 = (float4)(0.0f, 0.0f, 0.25f, 0.0f);
-    tetra.color = (float3)(0.75f, 0.3f, 0.2f);
-    tetra.AOcoeff = 0.0f;
-
-    float t = 1e20;
-   
-
-    if (t > 1e19){
-        cl_output[id] = (float3)(1.0f, 1.0f, 1.0f);
-        return;
-    }
-
-    cl_output[id] = tetra.color;
+    cl_output[id] = (float3)(0.0f, 0.0f, 0.0f);
 }

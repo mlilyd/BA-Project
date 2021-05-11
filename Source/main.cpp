@@ -1,4 +1,4 @@
-// Based on OpenCL ray tracing tutorial by Sam Lapere, 2016
+// OpenCL setup based on OpenCL ray tracing tutorial by Sam Lapere, 2016
 // from http://raytracey.blogspot.com
 
 //#define __CL_ENABLE_EXCEPTIONS
@@ -8,18 +8,25 @@
 #include <fstream>
 #include <stdio.h>
 #include <vector>
+#include <cmath>
 #include <CL/opencl.hpp>
 #include <CL/cl.h>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../Header/stb_image_write.h"
 
-// CONSTANT DEFINITIONS
-const int img_width = 1280;
-const int img_height = 720;
+#define float3(x, y, z) {{x, y, z}} 
+#define float4(x, y, z, w) {{x, y, z, w}}
 
-cl_float3 cpu_output[img_width * img_height]{};
-uint8_t output256[img_width * img_height * 3]{};
+// CONSTANT DEFINITIONS
+const int width = 1280;
+const int height = 720;
+const int depth = 2;
+const float epsilon = 0.00003f;
+
+cl_float3 cpu_output[width * height]{};
+//cl_float3 cpu_output_4d[width * height * depth]{};
+uint8_t output256[width * height * 3]{};
 
 cl::CommandQueue queue;
 cl::Kernel kernel;
@@ -28,17 +35,17 @@ cl::Program program;
 cl::Buffer cl_output;
 cl::Buffer cl_spheres;
 
-//dummy variables required for memory allignment
-struct Sphere {
-    cl_float radius;
-    cl_float dummy1;
-    cl_float dummy2;
-    cl_float dummy3;
-    cl_float3 position;
+struct Triangle {
+    cl_float3 v0;
+    cl_float3 v1;
+    cl_float3 v2;
     cl_float3 color;
-    cl_float3 emission;
 };
 
+struct Ray4 {
+    cl_float4 origin;
+    cl_float4 dir;
+};
 
 void initOpenCL() {
     // get all platforms (drivers), e.g. NVIDIA
@@ -72,7 +79,7 @@ void initOpenCL() {
 
     //converet opencl kernel code to string
     std::string source;
-    std::ifstream file("C:\\Users\\Lily\\Documents\\UNI\\BA\\project\\Project\\Source\\kernel.cl");
+    std::ifstream file("C:\\Users\\Lily\\Documents\\UNI\\BA\\programming\\Project\\Source\\kernel.cl");
     if (!file) {
         std::cout << "\nFile not found";
         exit(1);
@@ -92,11 +99,10 @@ void initOpenCL() {
     if (result == CL_BUILD_PROGRAM_FAILURE) std::cout << "CL Build Program Failure?" << std::endl;
 
     kernel = cl::Kernel(program, "render_triangle");
-
-
 }
 
 float clamp(float x) { return x < 0.0f ? 0.0f : x > 1.0f ? 1.0f : x; }
+
 //convert RGB float in range [0, 1] to int in range [0, 255]
 int toInt(float x) { return int(clamp(x) * 255 + .5); }
 
@@ -104,13 +110,13 @@ int toInt(float x) { return int(clamp(x) * 255 + .5); }
 void saveImage(std::string filename, bool ppm = true, bool png = true) {
     std::cout << "Saving image ...\n";
     FILE* file;
-    
+
     if (ppm) {
         file = fopen((filename + ".ppm").c_str(), "w");
-        fprintf(file, "P3\n%d %d\n%d\n", img_width, img_height, 255);
+        fprintf(file, "P3\n%d %d\n%d\n", width, height, 255);
     }
 
-    for (std::pair<int, int> i(0,0); i.first < img_width * img_height; i.first++) {
+    for (std::pair<int, int> i(0,0); i.first < width * height; i.first++) {
 
         int r = toInt(cpu_output[i.first].s[0]);
         int g = toInt(cpu_output[i.first].s[1]);
@@ -131,122 +137,213 @@ void saveImage(std::string filename, bool ppm = true, bool png = true) {
         std::cout << "Finished writing PPM!\n";
     }
     if (png) {
-        stbi_write_png((filename + ".png").c_str(), img_width, img_height, 3, output256, img_width*3);
+        stbi_write_png((filename + ".png").c_str(), width, height, 3, output256, width*3);
         std::cout << "Finished writing png!\n";
 
     }
 
 }
 
+void saveToBinary(std::string filename, std::vector<cl_float3> data) {
+    std::ofstream file(filename, std::ios::out | std::ios::binary);
+    if (!file) {
+        std::cout << "Cannot open file!\n";
+        return;
+    }
+    file.write((char*)&data[0], data.size()*sizeof(cl_float3));
+    file.close();
+}
+
 void cleanUp() {
     delete cpu_output;
 }
 
-#define float3(x, y, z) {{x, y, z}} 
+cl_float4 normalize(cl_float4 v) {
+    float length = std::sqrt(v.s0*v.s0 + v.s1 * v.s1 + v.s2 * v.s2 + v.s3 * v.s3);
+    return float4(v.s0 / length, v.s1 / length, v.s2 / length, v.s3 / length);
+}
 
-void initScene(Sphere* cpu_spheres) {
+cl_float4 operator-(cl_float4 v, cl_float4 w) {
+    return float4(v.s0 - w.s0, v.s1 - w.s1, v.s2 - w.s2, v.s3 - w.s3);
+}
+
+cl_float4 operator+(cl_float4 v, cl_float4 w) {
+    return float4(v.s0 + w.s0, v.s1 + w.s1, v.s2 + w.s2, v.s3 + w.s3);
+}
+
+cl_float4 operator*(cl_float4 v, float t) {
+    return float4(t * v.s0, t * v.s1, t * v.s2, t * v.s3);
+}
+
+float det4(cl_float4 A, cl_float4 B, cl_float4 C, cl_float4 D) {
+    float res = 0.0;
+    res += A.s0 * ((B.s1 * C.s2 * D.s3) + (C.s1 * D.s2 * B.s3) + (D.s1 * B.s2 * C.s3) - (B.s3 * C.s2 * D.s1) - (C.s3 * D.s2 * B.s1) - (D.s3 * B.s2 * C.s1));
+    res -= A.s1 * ((B.s0 * C.s2 * D.s3) + (C.s0 * D.s2 * B.s3) + (D.s0 * B.s2 * C.s3) - (B.s3 * C.s2 * D.s0) - (C.s3 * D.s2 * B.s0) - (D.s3 * B.s2 * C.s0));
+    res += A.s2 * ((B.s0 * C.s1 * D.s3) + (C.s0 * D.s1 * B.s3) + (D.s0 * B.s1 * C.s3) - (B.s3 * C.s1 * D.s0) - (C.s3 * D.s1 * B.s0) - (D.s3 * B.s1 * C.s0));
+    res -= A.s3 * ((B.s0 * C.s1 * D.s2) + (C.s0 * D.s1 * B.s2) + (D.s0 * B.s1 * C.s2) - (B.s2 * C.s1 * D.s0) - (C.s2 * D.s1 * B.s0) - (D.s2 * B.s1 * C.s0));
+    return res;
+}
+
+bool intersect_tetrahedra(cl_float4 v0, cl_float4 v1, cl_float4 v2, cl_float4 v3, Ray4 ray, float &t) {
+
+    cl_float4 v0v1 = v1 - v0;
+    cl_float4 v0v2 = v2 - v0;
+    cl_float4 v0v3 = v3 - v0;
+    cl_float4 Tvec = ray.origin - v0;
     
-    // left wall
-    cpu_spheres[0].radius = 200.0f;
-    cpu_spheres[0].position = float3(-200.6f, 0.0f, 0.0f);
-    cpu_spheres[0].color = float3(0.75f, 0.25f, 0.25f);
-    cpu_spheres[0].emission = float3(0.0f, 0.0f, 0.0f);
+    float detM = det4(ray.dir, v0v1, v0v2, v0v3);
+    if (detM < epsilon) { return false; }
+    if (std::fabs(detM) < epsilon) { return false; }
 
-    // right wall
-    cpu_spheres[1].radius = 200.0f;
-    cpu_spheres[1].position = float3(200.6f, 0.0f, 0.0f);
-    cpu_spheres[1].color = float3(0.25f, 0.25f, 0.75f);
-    cpu_spheres[1].emission = float3(0.0f, 0.0f, 0.0f);
+    float invDet = 1 / detM;
+
+    float Mt = det4(Tvec,    v0v1, v0v2, v0v3);
+    float My = det4(ray.dir, Tvec, v0v2, v0v3);
+    float Mz = det4(ray.dir, v0v1, Tvec, v0v3);
+    float Mw = det4(ray.dir, v0v1, v0v2, Tvec);
+
+    float y = My * invDet;
+    if (y < 0) { return false; }
     
+    float z = Mz * invDet;
+    if (z < 0) { return false; }
 
-    // floor
-    cpu_spheres[2].radius = 200.0f;
-    cpu_spheres[2].position = float3(0.0f, -200.4f, 0.0f);
-    cpu_spheres[2].color = float3(0.9f, 0.8f, 0.7f);
-    cpu_spheres[2].emission = float3(0.0f, 0.0f, 0.0f);
+    float w = Mw * invDet;
+    if (w < 0 || y+z+w > 1) { return false; }
 
-    
-    // ceiling
-    cpu_spheres[3].radius = 200.0f;
-    cpu_spheres[3].position = float3(0.0f, 200.4f, 0.0f);
-    cpu_spheres[3].color = float3(0.9f, 0.8f, 0.7f);
-    cpu_spheres[3].emission = float3(0.0f, 0.0f, 0.0f);
+    t = Mt * invDet;
 
-    // back wall
-    cpu_spheres[4].radius = 200.0f;
-    cpu_spheres[4].position = float3(0.0f, 0.0f, -200.4f);
-    cpu_spheres[4].color = float3(0.9f, 0.8f, 0.7f);
-    cpu_spheres[4].emission = float3(0.0f, 0.0f, 0.0f);
+    return true;
+}
 
- 
-    // front wall 
-    cpu_spheres[5].radius = 200.0f;
-    cpu_spheres[5].position = float3(0.0f, 0.0f, 202.0f);
-    cpu_spheres[5].color = float3(0.9f, 0.8f, 0.7f);
-    cpu_spheres[5].emission = float3(0.0f, 0.0f, 0.0f);
-    
+Ray4 createCamRay4D(int x, int y, int z) {
+    float fx = (float)x / (float)width;
+    float fy = (float)y / (float)height;
+    float fz = (float)z;
 
-    // left sphere
-    cpu_spheres[0].radius = 0.4f;
-    cpu_spheres[0].position = float3(0.0f, 0.0f, 0.0f);
-    cpu_spheres[0].color = float3(0.9f, 0.8f, 0.7f);
-    cpu_spheres[0].emission = float3(0.2f, 0.2f, 0.2f);
+    float aspect_ratio = (float)width / (float)height;
+    float fx2 = (fx - 0.5f) * aspect_ratio;
+    float fy2 = fy - 0.5f;
 
-    // right sphere
-    cpu_spheres[1].radius = 0.16f;
-    cpu_spheres[1].position = float3(0.25f, -0.24f, 0.1f);
-    cpu_spheres[1].color = float3(0.9f, 0.8f, 0.7f);
-    cpu_spheres[1].emission = float3(0.0f, 0.0f, 0.0f);
-   
-    // lightsource
-    cpu_spheres[2].radius = 1.0f;
-    cpu_spheres[2].position = float3(0.0f, 1.36f, 0.0f);
-    cpu_spheres[2].color = float3(0.0f, 0.0f, 0.0f);
-    cpu_spheres[2].emission = float3(9.0f, 8.0f, 6.0f);
-    
+    cl_float4 pixel_pos = float4(fx2, -fy2, fz, 0.0f);
 
+    struct Ray4 ray;
+    ray.origin = float4(0.0f, 0.0f, 20.0f, 0.0f);
+    ray.dir = normalize(pixel_pos - ray.origin);
+
+    return ray;
+}
+
+bool intersect_mesh(Ray4 ray, std::vector<cl_float4>vertices, int vol, int* vertIndex) {
+    float t = 1e20;
+    for (int i = 0; i < vol; i++) {
+        cl_float4 v0 = vertices[vertIndex[0 + i*4]];
+        cl_float4 v1 = vertices[vertIndex[1 + i * 4]];
+        cl_float4 v2 = vertices[vertIndex[2 + i * 4]];
+        cl_float4 v3 = vertices[vertIndex[3 + i * 4]];
+
+        
+        bool intersect = intersect_tetrahedra(v0, v1, v2, v3, ray, t);
+        if (intersect) {
+            std::cout << "intersects a tetrahedra\n";
+            return true;
+        }
+    }
+    return false;
+}
+
+
+std::vector<cl_float3> render4d_to_3d() {
+    std::vector<cl_float3> data (width * height * depth);
+
+    for (int i = 0; i < width * height * depth; i++) {
+        int x = i % width;
+        int z = i / (width * height);
+        int y = (i - z * width * height) / width;
+
+        cl_float4 v[] = { 
+                       float4(0.25, 0.0, 0.0, 0.0),
+                       float4(0.25, 0.25, 0.25, 0.0),
+                       float4(0.3, 0.0, 0.5, 0.0),
+                       float4(0.5, 0.0, 0.0, 0.0)
+                        };
+
+        std::vector<cl_float4> vertices(v, v + sizeof(v) / sizeof(cl_float4));
+
+        int vol = 1;
+        int vertIndex[] = { 0, 1, 2, 3};
+        Ray4 camray = createCamRay4D(x, y, z);
+        
+
+        if (intersect_mesh(camray, vertices, vol, vertIndex)) {
+            data[i] = float3(1.0f, 1.0f, 1.0f);
+        }
+        else {
+            data[i] = float3(0.0f, 0.0f, 0.0f);
+        }
+    }
+
+    return data;
 }
 
 int main() {
      //setup opencl
     initOpenCL();
 
-    // initialize scene
-    Sphere cpu_spheres[9];
-    initScene(cpu_spheres);
-
     // create buffer on device for image output and scene
-    cl_output = cl::Buffer(context, CL_MEM_WRITE_ONLY, img_width * img_height * sizeof(cl_float3));
-    cl_spheres = cl::Buffer(context, CL_MEM_READ_ONLY, 9 * sizeof(Sphere));
+    cl_output = cl::Buffer(context, CL_MEM_WRITE_ONLY, width * height * sizeof(cl_float3));
+    //cl_output = cl::Buffer(context, CL_MEM_WRITE_ONLY, width * height * depth * sizeof(cl_float3) );
     
-    cl::Buffer cl_test_array = cl::Buffer(context, CL_MEM_READ_ONLY, 3 * sizeof(cl_float3));
+    // create buffer on device for storing vertices
+    //cl::Buffer cl_test_array = cl::Buffer(context, CL_MEM_READ_ONLY, 3 * sizeof(cl_float3));
+    //cl_float3 test[3]{};
+    //test[0] = float3(1.0f, 0.0f, 0.0f);
+    //test[1] = float3(0.0f, 1.0f, 0.0f);
+    //test[2] = float3(1.0f, 1.0f, 0.0f);
+    //queue.enqueueWriteBuffer(cl_test_array, CL_TRUE, 0, 3 * sizeof(cl_float3), test);
 
-    std::cout << "Rendering image...\n";
+    //init triangle
+    Triangle t;
+    t.v0 = float3(0.25f, 0.0f, 0.0f);
+    t.v1 = float3(0.0f, 0.25f, 0.0f);
+    t.v2 = float3(0.0f, 0.0f, 0.0f);
+    t.color = float3(1.0f, 1.0f, 1.0f);
+
+    //std::cout << "Rendering image...\n";
+
     //specify kernel arguments
     kernel.setArg(0, cl_output);
-    kernel.setArg(1, img_width);
-    kernel.setArg(2, img_height);
-    //kernel.setArg(3, cl_test_array);
-    //kernel.setArg(4, cl_spheres);
+    kernel.setArg(1, width);
+    kernel.setArg(2, height);
+    //kernel.setArg(3, depth);
+    kernel.setArg(3, t);
     
     //specify work items. 
     //each pixel has its own work item, so number of work items equals number of pixels
-    std::size_t global_work_size = img_width * img_height;
+    std::size_t global_work_size = width * height;
     std::size_t local_work_size = 64;
 
     //launch kernel
     queue.enqueueNDRangeKernel(kernel, NULL, global_work_size, local_work_size);
     queue.finish();
-    
-    std::cout << "Rendering done!\n";
-        
+       
     //read opencl output to CPU 
-    queue.enqueueReadBuffer(cl_output, CL_TRUE, 0, img_width * img_height * sizeof(cl_float3), cpu_output);
+    queue.enqueueReadBuffer(cl_output, CL_TRUE, 0, width * height * sizeof(cl_float3), cpu_output);
 
-    //save image to PPM format
-    std::string filename = "Renders/new";
-    
+    std::string filename = "Renders/triangle_test3";
     saveImage(filename, false);
-   
+
+    std::vector<cl_float3> data = render4d_to_3d();
+    saveToBinary("Renders/img5.bin", data);
+    
+
+    // check if det4 is correct, result should be -104
+    //cl_float4 A = float4(1.0f, 3.0f, 0.0f, 1.0f);
+    //cl_float4 B = float4(3.0f, 1.0f, 1.0f, 6.0f);
+    //cl_float4 C = float4(2.0f, 0.0f, 4.0f, 1.0f);
+    //cl_float4 D = float4(1.0f, 3.0f, 0.0f, 5.0f);
+    //std::cout << det4(A, B, C, D);
+
+
     return 0;
 }

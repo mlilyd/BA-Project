@@ -94,5 +94,7 @@
     <None Include="Source\kernel.cl">
       <Filter>Source Files</Filter>
     </None>
+    <None Include="Source\example.cl" />
+    <None Include="Source\ambientocclusion.cpp" />
   </ItemGroup>
 </Project>
