@@ -19,8 +19,8 @@
 #define float4(x, y, z, w) {{x, y, z, w}}
 
 // CONSTANT DEFINITIONS
-const int width = 1280;
-const int height = 720;
+const int width = 300;
+const int height = 300;
 const int depth = 2;
 const float epsilon = 0.00003f;
 
@@ -191,8 +191,15 @@ bool intersect_tetrahedra(cl_float4 v0, cl_float4 v1, cl_float4 v2, cl_float4 v3
     cl_float4 v0v3 = v3 - v0;
     cl_float4 Tvec = ray.origin - v0;
     
+    std::cout << ray.dir.s0 << " " << ray.dir.s1 << " " << ray.dir.s2 << " "  << ray.dir.s3 << std::endl;
+    //std::cout << v0v1.s0 << " " << v0v1.s1 << " " << v0v1.s2 << " " << v0v1.s3 << std::endl;
+    //std::cout << v0v2.s0 << " " << v0v2.s1 << " " << v0v2.s2 << " " << v0v2.s3 << std::endl;
+    //std::cout << v0v3.s0 << " " << v0v3.s1 << " " << v0v3.s2 << " " << v0v3.s3 << std::endl;
+
     float detM = det4(ray.dir, v0v1, v0v2, v0v3);
-    if (detM < epsilon) { return false; }
+    std::cout << "detM: " << detM << std::endl;
+
+    //if (detM < epsilon) { return false; }
     if (std::fabs(detM) < epsilon) { return false; }
 
     float invDet = 1 / detM;
@@ -201,6 +208,10 @@ bool intersect_tetrahedra(cl_float4 v0, cl_float4 v1, cl_float4 v2, cl_float4 v3
     float My = det4(ray.dir, Tvec, v0v2, v0v3);
     float Mz = det4(ray.dir, v0v1, Tvec, v0v3);
     float Mw = det4(ray.dir, v0v1, v0v2, Tvec);
+
+
+
+    t = Mt * invDet;
 
     float y = My * invDet;
     if (y < 0) { return false; }
@@ -211,7 +222,7 @@ bool intersect_tetrahedra(cl_float4 v0, cl_float4 v1, cl_float4 v2, cl_float4 v3
     float w = Mw * invDet;
     if (w < 0 || y+z+w > 1) { return false; }
 
-    t = Mt * invDet;
+    
 
     return true;
 }
@@ -219,16 +230,18 @@ bool intersect_tetrahedra(cl_float4 v0, cl_float4 v1, cl_float4 v2, cl_float4 v3
 Ray4 createCamRay4D(int x, int y, int z) {
     float fx = (float)x / (float)width;
     float fy = (float)y / (float)height;
-    float fz = (float)z;
+    float fz = (float)z / (float)depth;
 
     float aspect_ratio = (float)width / (float)height;
+
     float fx2 = (fx - 0.5f) * aspect_ratio;
     float fy2 = fy - 0.5f;
+    float fz2 = fz - 0.5f;
 
-    cl_float4 pixel_pos = float4(fx2, -fy2, fz, 0.0f);
+    cl_float4 pixel_pos = float4(fx2, -fy2, -fz2, 0.0f);
 
     struct Ray4 ray;
-    ray.origin = float4(0.0f, 0.0f, 20.0f, 0.0f);
+    ray.origin = float4(0.0f, 0.0f, 0.0f, 1.0f);
     ray.dir = normalize(pixel_pos - ray.origin);
 
     return ray;
@@ -244,8 +257,9 @@ bool intersect_mesh(Ray4 ray, std::vector<cl_float4>vertices, int vol, int* vert
 
         
         bool intersect = intersect_tetrahedra(v0, v1, v2, v3, ray, t);
+        std::cout << "t: " << t << std::endl;
         if (intersect) {
-            std::cout << "intersects a tetrahedra\n";
+            std::cout << "intersects a tetrahedra!\n";
             return true;
         }
     }
@@ -330,20 +344,21 @@ int main() {
     //read opencl output to CPU 
     queue.enqueueReadBuffer(cl_output, CL_TRUE, 0, width * height * sizeof(cl_float3), cpu_output);
 
-    std::string filename = "Renders/triangle_test3";
-    saveImage(filename, false);
+    //std::string filename = "Renders/triangle_test3";
+    //saveImage(filename, false);
 
     std::vector<cl_float3> data = render4d_to_3d();
-    saveToBinary("Renders/img5.bin", data);
+    //saveToBinary("Renders/img9.bin", data);
     
 
     // check if det4 is correct, result should be -104
-    //cl_float4 A = float4(1.0f, 3.0f, 0.0f, 1.0f);
-    //cl_float4 B = float4(3.0f, 1.0f, 1.0f, 6.0f);
-    //cl_float4 C = float4(2.0f, 0.0f, 4.0f, 1.0f);
-    //cl_float4 D = float4(1.0f, 3.0f, 0.0f, 5.0f);
-    //std::cout << det4(A, B, C, D);
-
+    /*
+    cl_float4 A = float4(1.0f, 3.0f, 0.0f, 1.0f);
+    cl_float4 B = float4(3.0f, 1.0f, 1.0f, 6.0f);
+    cl_float4 C = float4(2.0f, 0.0f, 4.0f, 1.0f);
+    cl_float4 D = float4(1.0f, 3.0f, 0.0f, 5.0f);
+    std::cout << det4(A, B, C, D);
+    */
 
     return 0;
 }
