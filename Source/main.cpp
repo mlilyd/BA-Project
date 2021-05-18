@@ -9,8 +9,12 @@
 #include <stdio.h>
 #include <vector>
 #include <cmath>
+#include <random>
+
 #include <CL/opencl.hpp>
 #include <CL/cl.h>
+
+#include <glm/glm.hpp>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../Header/stb_image_write.h"
@@ -18,11 +22,15 @@
 #define float3(x, y, z) {{x, y, z}} 
 #define float4(x, y, z, w) {{x, y, z, w}}
 
+
+
 // CONSTANT DEFINITIONS
 const int width = 300;
 const int height = 300;
-const int depth = 2;
+const int depth = 10;
+
 const float epsilon = 0.00003f;
+const float pi = 3.1415926535897932385;
 
 cl_float3 cpu_output[width * height]{};
 //cl_float3 cpu_output_4d[width * height * depth]{};
@@ -35,11 +43,19 @@ cl::Program program;
 cl::Buffer cl_output;
 cl::Buffer cl_spheres;
 
-struct Triangle {
-    cl_float3 v0;
-    cl_float3 v1;
-    cl_float3 v2;
-    cl_float3 color;
+
+struct TriangleMesh {
+    std::vector<cl_float3> vertices;
+    std::vector<float> ao_values;
+    int faces;
+    int vertIndex;
+};
+
+struct TetraMesh {
+    std::vector<cl_float4> vertices;
+    std::vector<float> ao_values;
+    int volumes;
+    int vertIndex;
 };
 
 struct Ray4 {
@@ -106,7 +122,6 @@ float clamp(float x) { return x < 0.0f ? 0.0f : x > 1.0f ? 1.0f : x; }
 //convert RGB float in range [0, 1] to int in range [0, 255]
 int toInt(float x) { return int(clamp(x) * 255 + .5); }
 
-//Using fprint for a more efficient write operation
 void saveImage(std::string filename, bool ppm = true, bool png = true) {
     std::cout << "Saving image ...\n";
     FILE* file;
@@ -144,13 +159,13 @@ void saveImage(std::string filename, bool ppm = true, bool png = true) {
 
 }
 
-void saveToBinary(std::string filename, std::vector<cl_float3> data) {
+void saveToBinary(std::string filename, std::vector<glm::vec3> data) {
     std::ofstream file(filename, std::ios::out | std::ios::binary);
     if (!file) {
         std::cout << "Cannot open file!\n";
         return;
     }
-    file.write((char*)&data[0], data.size()*sizeof(cl_float3));
+    file.write((char*)data.data(), data.size() * sizeof(glm::vec3));
     file.close();
 }
 
@@ -175,6 +190,7 @@ cl_float4 operator*(cl_float4 v, float t) {
     return float4(t * v.s0, t * v.s1, t * v.s2, t * v.s3);
 }
 
+
 float det4(cl_float4 A, cl_float4 B, cl_float4 C, cl_float4 D) {
     float res = 0.0;
     res += A.s0 * ((B.s1 * C.s2 * D.s3) + (C.s1 * D.s2 * B.s3) + (D.s1 * B.s2 * C.s3) - (B.s3 * C.s2 * D.s1) - (C.s3 * D.s2 * B.s1) - (D.s3 * B.s2 * C.s1));
@@ -184,20 +200,20 @@ float det4(cl_float4 A, cl_float4 B, cl_float4 C, cl_float4 D) {
     return res;
 }
 
-bool intersect_tetrahedra(cl_float4 v0, cl_float4 v1, cl_float4 v2, cl_float4 v3, Ray4 ray, float &t) {
+bool intersect_tetrahedron(cl_float4 v0, cl_float4 v1, cl_float4 v2, cl_float4 v3, Ray4 ray, float &t) {
 
     cl_float4 v0v1 = v1 - v0;
     cl_float4 v0v2 = v2 - v0;
     cl_float4 v0v3 = v3 - v0;
     cl_float4 Tvec = ray.origin - v0;
     
-    std::cout << ray.dir.s0 << " " << ray.dir.s1 << " " << ray.dir.s2 << " "  << ray.dir.s3 << std::endl;
+    //std::cout << ray.dir.s0 << " " << ray.dir.s1 << " " << ray.dir.s2 << " "  << ray.dir.s3 << std::endl;
     //std::cout << v0v1.s0 << " " << v0v1.s1 << " " << v0v1.s2 << " " << v0v1.s3 << std::endl;
     //std::cout << v0v2.s0 << " " << v0v2.s1 << " " << v0v2.s2 << " " << v0v2.s3 << std::endl;
     //std::cout << v0v3.s0 << " " << v0v3.s1 << " " << v0v3.s2 << " " << v0v3.s3 << std::endl;
 
     float detM = det4(ray.dir, v0v1, v0v2, v0v3);
-    std::cout << "detM: " << detM << std::endl;
+    //std::cout << "detM: " << detM << std::endl;
 
     //if (detM < epsilon) { return false; }
     if (std::fabs(detM) < epsilon) { return false; }
@@ -214,12 +230,15 @@ bool intersect_tetrahedra(cl_float4 v0, cl_float4 v1, cl_float4 v2, cl_float4 v3
     t = Mt * invDet;
 
     float y = My * invDet;
+
     if (y < 0) { return false; }
     
     float z = Mz * invDet;
+
     if (z < 0) { return false; }
 
     float w = Mw * invDet;
+
     if (w < 0 || y+z+w > 1) { return false; }
 
     
@@ -228,6 +247,7 @@ bool intersect_tetrahedra(cl_float4 v0, cl_float4 v1, cl_float4 v2, cl_float4 v3
 }
 
 Ray4 createCamRay4D(int x, int y, int z) {
+    //normalize coordinates
     float fx = (float)x / (float)width;
     float fy = (float)y / (float)height;
     float fz = (float)z / (float)depth;
@@ -238,7 +258,7 @@ Ray4 createCamRay4D(int x, int y, int z) {
     float fy2 = fy - 0.5f;
     float fz2 = fz - 0.5f;
 
-    cl_float4 pixel_pos = float4(fx2, -fy2, -fz2, 0.0f);
+    cl_float4 pixel_pos = float4(fx2, fy2, -fz2, 0.0f);
 
     struct Ray4 ray;
     ray.origin = float4(0.0f, 0.0f, 0.0f, 1.0f);
@@ -247,8 +267,9 @@ Ray4 createCamRay4D(int x, int y, int z) {
     return ray;
 }
 
-bool intersect_mesh(Ray4 ray, std::vector<cl_float4>vertices, int vol, int* vertIndex) {
-    float t = 1e20;
+bool intersect_mesh(Ray4 ray, std::vector<cl_float4>vertices, int vol, int* vertIndex, int &tetraIndex) {
+    float t_old = 1e20;
+    float t_new = 1e20;
     for (int i = 0; i < vol; i++) {
         cl_float4 v0 = vertices[vertIndex[0 + i*4]];
         cl_float4 v1 = vertices[vertIndex[1 + i * 4]];
@@ -256,44 +277,107 @@ bool intersect_mesh(Ray4 ray, std::vector<cl_float4>vertices, int vol, int* vert
         cl_float4 v3 = vertices[vertIndex[3 + i * 4]];
 
         
-        bool intersect = intersect_tetrahedra(v0, v1, v2, v3, ray, t);
-        std::cout << "t: " << t << std::endl;
+        bool intersect = intersect_tetrahedron(v0, v1, v2, v3, ray, t_new);
+        //std::cout << "t: " << t << std::endl;
         if (intersect) {
-            std::cout << "intersects a tetrahedra!\n";
+            //std::cout << "intersects a tetrahedra!\n";
+            if (t_old > t_new){
+                t_old = t_new;
+                tetraIndex = i;
+            }
             return true;
         }
     }
     return false;
 }
 
+float random_angle(float min, float max) {
+    float random = ((float)rand()) / (float)RAND_MAX;
+    float diff = max - min;
+    float res = random * diff;
+    return min + res;
+}
 
-std::vector<cl_float3> render4d_to_3d() {
-    std::vector<cl_float3> data (width * height * depth);
+cl_float4 sample_hemisphere4d(cl_float4 center, float radius, float theta, float phi, float psi) {
+
+    float x = center.s0 + radius * cos(psi);
+    float y = center.s1 + radius * sin(psi) * cos(theta);
+    float z = center.s2 + radius * sin(psi) * sin(theta) * cos(phi);
+    float w = center.s3 + radius * sin(psi) * sin(theta) * sin(phi);
+
+    return float4(x, y, z, w);
+}
+
+std::vector<float> get_ao4d(std::vector<cl_float4> vertices, int vol, int* vertIndex, float radius, int samples) {
+    std::vector<float> ao_values(vertices.size());
+
+    for (int i = 0; i < vertices.size(); i++) {
+
+        float ao = 0.0f;
+        Ray4 ray;
+        ray.origin = vertices[i];
+        int k = 0;
+        for (int j = 0; j < samples; j++) {
+            ray.dir = sample_hemisphere4d(vertices[i], radius, random_angle(0,pi), random_angle(0, 2*pi), random_angle(0, pi));
+            if(intersect_mesh(ray, vertices, vol, vertIndex, k)){
+                ao += 1.0;
+            }
+        }
+        ao_values[i] = ao / samples;
+
+    }
+
+    return ao_values;
+}
+
+  
+std::vector<glm::vec3> render4d_to_3d_glm() {
+    std::vector<glm::vec3> data(width * height * depth);
+
+    cl_float4 v[] = {
+                       float4(-0.25, 0.0, 0.0, 0.0), //0
+                       float4(-0.25, 0.25,-0.25, 0.0),//1 
+                       float4(-0.3, 0.0, 0.5, 0.0), //2
+                       float4(-0.5, 0.0, 0.0, 0.0), //3
+
+                       float4(-0.5, 0.25, 0.0, 0.5), //4
+                       float4(-0.35, 0.25, -0.25, 0.5), //5
+                       float4(0.25, 0.0, 0.0, 0.0), //6
+                       float4(0.5, 0.0, 0.0, 0.0) //7
+    };
+
+    std::vector<cl_float4> vertices(v, v + sizeof(v) / sizeof(cl_float4));
+
+    int vol = 2;
+    int vertIndex[] = { 0, 1, 2, 3, 4, 5, 6, 7};
+
+    std::vector<float> ao_values = get_ao4d(vertices, vol, vertIndex, 10.0, 100);
 
     for (int i = 0; i < width * height * depth; i++) {
         int x = i % width;
         int z = i / (width * height);
-        int y = (i - z * width * height) / width;
-
-        cl_float4 v[] = { 
-                       float4(0.25, 0.0, 0.0, 0.0),
-                       float4(0.25, 0.25, 0.25, 0.0),
-                       float4(0.3, 0.0, 0.5, 0.0),
-                       float4(0.5, 0.0, 0.0, 0.0)
-                        };
-
-        std::vector<cl_float4> vertices(v, v + sizeof(v) / sizeof(cl_float4));
-
-        int vol = 1;
-        int vertIndex[] = { 0, 1, 2, 3};
-        Ray4 camray = createCamRay4D(x, y, z);
+        int y = (i - (z * width * height)) / width;
+        //std::cout <<"Coordinates: " << x << " " << y << " " << z << std::endl;
         
+        Ray4 camray = createCamRay4D(x, y, z);
+        int tetraIndex = 0;
+        if (intersect_mesh(camray, vertices, vol, vertIndex, tetraIndex)) {
 
-        if (intersect_mesh(camray, vertices, vol, vertIndex)) {
-            data[i] = float3(1.0f, 1.0f, 1.0f);
+            /*
+            float ao0 = ao_values[vertIndex[0 + tetraIndex * 4]];
+            float ao1 = ao_values[vertIndex[1 + tetraIndex * 4]];
+            float ao2 = ao_values[vertIndex[2 + tetraIndex * 4]];
+            float ao3 = ao_values[vertIndex[3 + tetraIndex * 4]];
+
+            float avg_ao = (ao0+ao1+ao2+ao3)/4;
+            
+            data[i] = glm::vec3(avg_ao, avg_ao, avg_ao);
+            //*/
+            data[i] = glm::vec3(1, 1, 1);
+            //std::cout << data[i].x << data[i].y << data[i].z << std::endl;
         }
         else {
-            data[i] = float3(0.0f, 0.0f, 0.0f);
+            data[i] = glm::vec3(0.0f, 0.0f, 0.0f);
         }
     }
 
@@ -301,6 +385,8 @@ std::vector<cl_float3> render4d_to_3d() {
 }
 
 int main() {
+
+    /*
      //setup opencl
     initOpenCL();
 
@@ -308,14 +394,6 @@ int main() {
     cl_output = cl::Buffer(context, CL_MEM_WRITE_ONLY, width * height * sizeof(cl_float3));
     //cl_output = cl::Buffer(context, CL_MEM_WRITE_ONLY, width * height * depth * sizeof(cl_float3) );
     
-    // create buffer on device for storing vertices
-    //cl::Buffer cl_test_array = cl::Buffer(context, CL_MEM_READ_ONLY, 3 * sizeof(cl_float3));
-    //cl_float3 test[3]{};
-    //test[0] = float3(1.0f, 0.0f, 0.0f);
-    //test[1] = float3(0.0f, 1.0f, 0.0f);
-    //test[2] = float3(1.0f, 1.0f, 0.0f);
-    //queue.enqueueWriteBuffer(cl_test_array, CL_TRUE, 0, 3 * sizeof(cl_float3), test);
-
     //init triangle
     Triangle t;
     t.v0 = float3(0.25f, 0.0f, 0.0f);
@@ -344,12 +422,12 @@ int main() {
     //read opencl output to CPU 
     queue.enqueueReadBuffer(cl_output, CL_TRUE, 0, width * height * sizeof(cl_float3), cpu_output);
 
-    //std::string filename = "Renders/triangle_test3";
-    //saveImage(filename, false);
+    std::string filename = "Renders/triangle_test3";
+    saveImage(filename, false);
+    */
 
-    std::vector<cl_float3> data = render4d_to_3d();
-    //saveToBinary("Renders/img9.bin", data);
-    
+    std::vector<glm::vec3> data = render4d_to_3d_glm();
+    saveToBinary("Renders/test.raw", data);
 
     // check if det4 is correct, result should be -104
     /*
